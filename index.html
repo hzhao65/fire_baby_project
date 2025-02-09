@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fire Simulation with Real-Time Weather</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    /* Basic reset and layout */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+    /* The map container for Leaflet */
+    #map {
+      width: 100%;
+      height: 80%;
+      position: relative;
+    }
+    /* Canvas overlay for simulation drawing (always transparent so the map is interactive) */
+    #mapCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 500;
+      pointer-events: none;
+    }
+    /* Side info box to display fire info, weather, and reasoning */
+    #infoBox {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 280px;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px;
+      z-index: 1000;
+      font-size: 0.9em;
+    }
+    /* Legend box (color-coded) positioned at bottom left */
+    #legend {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px;
+      z-index: 1000;
+      font-size: 0.9em;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .legend-color {
+      width: 15px;
+      height: 15px;
+      margin-right: 5px;
+      display: inline-block;
+      border: 1px solid #000;
+    }
+    .legend-icon {
+      margin-right: 5px;
+    }
+    /* Controls container at the bottom */
+    #controls {
+      height: 20%;
+      background: #f9f9f9;
+      padding: 10px;
+      box-sizing: border-box;
+      text-align: center;
+      font-size: 1em;
+    }
+    #controls button,
+    #controls input,
+    #controls select,
+    #controls label {
+      margin: 5px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Map container (Leaflet will load the USGS Topo Map here) -->
+  <div id="map"></div>
+  <!-- Canvas overlay for simulation drawing -->
+  <canvas id="mapCanvas"></canvas>
+  <!-- Side info box to display fire info -->
+  <div id="infoBox">
+    <h2>Fire Info</h2>
+    <p id="coords">Coordinates: Not set</p>
+    <p id="gptReasoning">Reasoning: None</p>
+    <p id="address">Address: Not set</p>
+    <p id="nearestFireStation">Nearest fire station: Not set</p>
+    <!-- Emergency call message, initially hidden -->
+    <p id="emergencyCall" style="display: none; color: red; font-weight: bold;">
+      Call 911 immediately
+    </p>
+  </div>
+  <!-- Legend for fire spread scenarios -->
+  <div id="legend">
+    <h3>Legend</h3>
+    <div class="legend-item">
+      <span class="legend-color" style="background-color: green;"></span>
+      Best Case
+    </div>
+    <div class="legend-item">
+      <span class="legend-color" style="background-color: yellow;"></span>
+      Neutral Case
+    </div>
+    <div class="legend-item">
+      <span class="legend-color" style="background-color: orange;"></span>
+      Worst Case
+    </div>
+    <div class="legend-item">
+      <span class="legend-icon" style="font-size:24px; color: blue;">&#9733;</span>
+      Fire Station
+    </div>
+    <div class="legend-item">
+      <span class="legend-icon" style="font-size:24px; color: blue;">&bull;</span>
+      Hydrant
+    </div>
+  </div>
+  <!-- Simulation controls -->
+  <div id="controls">
+    <button id="setFireButton">Simulate Fire Spread</button>
+    <button id="clearFireButton">Clear Fire</button>
+    <button id="clearPredictionsButton">Clear Predictions</button>
+    <br />
+    <label for="timeSlider">Time:</label>
+    <input type="range" id="timeSlider" min="0" max="100" value="0">
+    <span id="timeValue">0</span>
+    <p>Click on the map to set the fire's starting point.</p>
+  </div>
+  <!-- Include Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- Initialize the Leaflet map with USGS Topo Tiles -->
+  <script>
+    // Create a Leaflet map centered on Los Angeles.
+    var map = L.map('map').setView([34.0522, -118.2437], 12);
+    L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 20,
+      attribution: 'Map courtesy of the <a href="https://www.usgs.gov/">USGS</a>'
+    }).addTo(map);
+  </script>
+  <!-- Include our simulation logic -->
+  <script src="script.js"></script>
+</body>
+</html>
