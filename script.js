@@ -170,7 +170,7 @@ function getLandCover(lat, lng, radius = 100) {
 }
 
 function updateEnvironmentalData(latlng) {
-  const apiKey = 'c45fb7ca63774b0e83a232501250802';
+  const apiKey = 'YOUR_API_KEY_HERE';
   const weatherUrl = `http://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${latlng.lat},${latlng.lng}&aqi=no`;
   
   fetch(weatherUrl)
