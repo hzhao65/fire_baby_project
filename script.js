@@ -10,6 +10,7 @@ const clearFireButton = document.getElementById('clearFireButton');
 const clearPredictionsButton = document.getElementById('clearPredictionsButton');
 
 let fireStartLatLng = null; // Store as a Leaflet latlng (geographic coordinate)
+let currentCenter = null;   // For meter-to-pixel conversions
 let animationFrameId;
 let simulationRunning = false; // Flag to indicate if simulation is active
 
@@ -26,12 +27,13 @@ const neutralMultiplier = 1.0;
 const worstMultiplier = 1.2;
 
 // A constant to boost the visible spread (if needed)
-const displayScaleFactor = 1;
+// Changed displayScaleFactor from 10 to 5 for a more moderate appearance.
+const displayScaleFactor = 5;
 
 // ----- Simulation Time Scale Settings -----
 // totalSimTimeMin defines the total simulated time (e.g. fire evolution time in minutes)
 const totalSimTimeMin = 30; // For example, the simulation represents 30 minutes of fire evolution.
-// simTimeStepMinutes defines the simulated time per step. Change to 0.5 for half-minute intervals or 1 for whole minutes.
+// simTimeStepMinutes defines the simulated time per step.
 const simTimeStepMinutes = 1.0;
 // The number of simulation steps is computed from totalSimTimeMin and simTimeStepMinutes.
 const simulationSteps = totalSimTimeMin / simTimeStepMinutes;
@@ -76,8 +78,7 @@ window.addEventListener('resize', resizeCanvas);
 // Helper: Convert Meters to Pixels at the Current Map Zoom
 // ---------------------
 function metersToPixels(meters) {
-  // Use fireStartLatLng as a reference.
-  const center = fireStartLatLng;
+  const center = currentCenter || fireStartLatLng;
   if (!center) return meters;
   const lat = center.lat;
   const lng = center.lng;
@@ -93,7 +94,7 @@ function metersToPixels(meters) {
 // Helper: Compute Distance Between Two Lat/Lng Points (in meters)
 // ---------------------
 function computeDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371000; // Earth's radius in meters
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lng2 - lng1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -124,12 +125,17 @@ function drawFire() {
 // ---------------------
 
 // getElevation uses a CORS proxy to bypass restrictions.
-// If you get a 403 error, visit https://cors-anywhere.herokuapp.com/corsdemo to request temporary access.
+// NOTE: If you receive a 403 error, try requesting temporary access or use a different proxy.
 function getElevation(lat, lng) {
-  const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+  const proxyUrl = 'https://thingproxy.freeboard.io/fetch/';
   const url = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
   return fetch(proxyUrl + url)
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) {
+        throw new Error("CORS proxy error: " + response.status);
+      }
+      return response.json();
+    })
     .then(data => {
       if (data.results && data.results.length > 0) {
         return data.results[0].elevation;
@@ -170,7 +176,7 @@ function getLandCover(lat, lng, radius = 100) {
 }
 
 function updateEnvironmentalData(latlng) {
-  const apiKey = 'YOUR_API_KEY_HERE';
+  const apiKey = 'c45fb7ca63774b0e83a232501250802';
   const weatherUrl = `http://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${latlng.lat},${latlng.lng}&aqi=no`;
   
   fetch(weatherUrl)
@@ -192,7 +198,7 @@ function updateEnvironmentalData(latlng) {
           getSlope(latlng.lat, latlng.lng),
           getLandCover(latlng.lat, latlng.lng)
         ]).then(([slope, landCover]) => {
-          const fuelType = (landCover === 'forest' || landCover === 'wood') ? 'dense' : 'sparse';
+          const fuelType = (landCover === 'forest' || landCover === 'wood') ? 'sparse' : 'sparse';
           const baseSpreadRate = 1.0;
           const temperatureModifier = 1 + ((temperature - 20) * 0.05);
           const humidityModifier = 1 - ((humidity / 100) * 0.5);
@@ -210,7 +216,7 @@ function updateEnvironmentalData(latlng) {
           const reasoningElem = document.getElementById('gptReasoning');
           if (reasoningElem) {
             reasoningElem.textContent =
-              `Reasoning: Temp ${temperature}°C, Wind ${windSpeedMs.toFixed(2)} m/s (Dir: ${windDegree}°), ` +
+              `Temp ${temperature}°C, Wind ${windSpeedMs.toFixed(2)} m/s (Dir: ${windDegree}°), ` +
               `Humidity ${humidity}%, Precip ${precip_mm} mm, Slope ${slope.toFixed(2)}%, ` +
               `Fuel: ${fuelType}, Land Cover: ${landCover}.`;
           }
@@ -234,7 +240,7 @@ function updateInfoBox(latlng) {
   }
   
   const addressElem = document.getElementById('address');
-  const url = `https://api.opencagedata.com/geocode/v1/json?q=${latlng.lat},${latlng.lng}&key=YOUR_API_KEY`;
+  const url = `https://api.opencagedata.com/geocode/v1/json?q=${latlng.lat},${latlng.lng}&key=20cdeedce57f454c8e848b23e897e4ca`;
   
   fetch(url)
     .then(response => response.json())
@@ -255,18 +261,12 @@ function updateInfoBox(latlng) {
     });
   
   updateEnvironmentalData(latlng);
-  
-  const reasoningElem = document.getElementById('gptReasoning');
-  if (reasoningElem) {
-    reasoningElem.textContent = "Reasoning: Best: Slow spread. Neutral: Moderate spread. Worst: Rapid spread.";
-  }
 }
 
 // ---------------------
 // Function to Display Nearby Firefighting Resources
 // ---------------------
 function displayNearbyFireResources(latlng) {
-  // Clear any existing resource markers.
   fireResourceMarkers.forEach(marker => map.removeLayer(marker));
   fireResourceMarkers = [];
   
@@ -328,12 +328,11 @@ function displayNearbyFireResources(latlng) {
 map.on('click', (e) => {
   if (fireStartLatLng !== null) return;
   fireStartLatLng = e.latlng;
-  currentCenter = e.latlng; // Initialize currentCenter for conversions.
+  currentCenter = e.latlng;
   drawMap();
   drawFire();
   updateInfoBox(e.latlng);
   displayNearbyFireResources(e.latlng);
-  // Show the emergency call message since a fire is now simulated.
   document.getElementById('emergencyCall').style.display = 'block';
 });
 
@@ -379,7 +378,6 @@ function simulateFireSpread() {
     alert('Please click on the map to set the starting point of the fire first.');
     return;
   }
-  // Read user-chosen simulation run time (in seconds) from an input if available, or default to 10.
   const simRunTimeSecElem = document.getElementById('simRunTimeSec');
   const simRunTimeSec = simRunTimeSecElem ? parseFloat(simRunTimeSecElem.value) || 10 : 10;
   const totalRealTime = simRunTimeSec * 1000;
@@ -398,7 +396,6 @@ function animateFireSpread(timeIndex, totalRealTime) {
   const cp = map.latLngToContainerPoint(fireStartLatLng);
   drawFire();
   
-  // Recalculate radii on the fly using current effectiveSpreadRate.
   const bestRadius = timeIndex * effectiveSpreadRate * bestMultiplier;
   const neutralRadius = timeIndex * effectiveSpreadRate * neutralMultiplier;
   const worstRadius = timeIndex * effectiveSpreadRate * worstMultiplier;
@@ -436,9 +433,8 @@ function animateFireSpread(timeIndex, totalRealTime) {
   drawScenario(neutralPoints, 'yellow');
   drawScenario(worstPoints, 'orange');
   
-  // Update the slider and label using the simulated time in minutes.
   timeSlider.value = timeIndex;
-  const simulatedMinutes = timeIndex * simTimeStepMinutes; // Each step equals simTimeStepMinutes.
+  const simulatedMinutes = timeIndex * simTimeStepMinutes;
   timeValue.textContent = `Time: ${simulatedMinutes} minutes`;
   
   const delay = totalRealTime / simulationSteps;
@@ -464,15 +460,13 @@ function clearFire() {
   fireStartLatLng = null;
   document.getElementById('coords').textContent = "Coordinates: Not set";
   document.getElementById('address').textContent = "Address: Not set";
-  document.getElementById('gptReasoning').textContent = "Reasoning: None";
+  document.getElementById('gptReasoning').textContent = "Reasoning: Not set";
   document.getElementById('nearestFireStation').textContent = "Nearest fire station: Not set";
   timeSlider.value = 0;
   timeValue.textContent = "Time: 0 minutes";
   
-  // Hide the emergency call message.
   document.getElementById('emergencyCall').style.display = 'none';
   
-  // Remove any firefighting resource markers.
   fireResourceMarkers.forEach(marker => map.removeLayer(marker));
   fireResourceMarkers = [];
 }
@@ -481,14 +475,14 @@ function clearFire() {
 // Recursive Environmental Data Update Function
 // ---------------------
 function recursiveUpdateEnvData(iteration) {
-  if (!simulationRunning) return; // Stop updates when simulation ends.
+  if (!simulationRunning) return;
   if (fireStartLatLng) {
     updateEnvironmentalData(fireStartLatLng);
     console.log(`Environmental update iteration: ${iteration}`);
   }
   setTimeout(() => {
     recursiveUpdateEnvData(iteration + 1);
-  }, 1000); // update every 1 second
+  }, 1000);
 }
 
 // ---------------------
@@ -517,15 +511,15 @@ timeSlider.addEventListener('input', (event) => {
 map.on('move zoom', redrawAll);
 
 // ---------------------
-// Custom Locate Control Added to Controls Area (at the bottom)
+// Custom Locate Button Added to the Controls Div (at the bottom)
 // ---------------------
 const controlsDiv = document.getElementById('controls');
 const locateButton = document.createElement('button');
-locateButton.innerHTML = '<i class="fa fa-location-arrow" aria-hidden="true" style="line-height:30px;"></i>';
+locateButton.innerHTML = '<a href="#" style="color: blue; text-decoration: underline; font-size:16px;">Locate Me</a>';
 locateButton.title = 'Go to my current location';
 locateButton.style.marginTop = '10px';
-locateButton.style.width = '40px';
-locateButton.style.height = '40px';
+locateButton.style.width = '100px';
+locateButton.style.height = '30px';
 locateButton.style.border = 'none';
 locateButton.style.backgroundColor = '#fff';
 locateButton.style.cursor = 'pointer';
@@ -535,7 +529,7 @@ locateButton.onclick = function() {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
-        map.setView(latlng, 14); // Adjust zoom level as desired.
+        map.setView(latlng, 14);
       },
       (error) => {
         alert("Unable to retrieve your location.");
@@ -547,5 +541,4 @@ locateButton.onclick = function() {
   }
 };
 
-// Append the locate button to the controls container (which already contains your text).
 controlsDiv.appendChild(locateButton);
